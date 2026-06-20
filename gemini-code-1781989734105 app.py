@@ -37,8 +37,16 @@ SYMBOL = st.sidebar.text_input("Par a operar (Binance)", value="BTC/USDT:USDT")
 TIMEFRAME = st.sidebar.selectbox("Temporalidad", ["15m", "4h"], index=0)
 UMBRAL = st.sidebar.slider("Umbral de movimiento (%)", min_value=1.0, max_value=15.0, value=5.0, step=0.5)
 
-# Conexión rápida a Binance (público para lectura de datos)
-exchange = ccxt.binance({'enableRateLimit': True, 'options': {'defaultType': 'future'}})
+# Conexión segura usando tus credenciales guardadas en Secrets
+exchange = ccxt.binance({
+    'apiKey': st.secrets["API_KEY_TESTNET"],
+    'secret': st.secrets["SECRET_KEY_TESTNET"],
+    'enableRateLimit': True,
+    'options': {'defaultType': 'future'}
+})
+
+# Forzar a la app a usar el entorno Testnet en la nube
+exchange.set_sandbox_mode(True)
 
 # Métricas principales en pantalla
 col1, col2, col3 = st.columns(3)
