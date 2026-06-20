@@ -5,11 +5,11 @@ import time
 import requests
 
 # =====================================================================
-# CONFIGURACIÓN DE NOTIFICACIONES (TELEGRAM) - OPCIONAL
+# CONFIGURACIÓN DE NOTIFICACIONES (TELEGRAM LEÍDA DESDE SECRETS)
 # =====================================================================
-# Para activarlo, crea un bot con @BotFather en Telegram y obtén tu ID con @userinfobot
-TELEGRAM_TOKEN = "TU_TELEGRAM_BOT_TOKEN"
-TELEGRAM_CHAT_ID = "TU_TELEGRAM_CHAT_ID"
+# Ahora lee de forma segura las credenciales que guardaste en Advanced Settings
+TELEGRAM_TOKEN = st.secrets["TELEGRAM_TOKEN"]
+TELEGRAM_CHAT_ID = st.secrets["TELEGRAM_CHAT_ID"]
 
 def enviar_alerta_telegram(mensaje):
     if TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
@@ -33,7 +33,7 @@ if 'historial_señales' not in st.session_state:
 
 # Barra lateral con parámetros configurables por el usuario
 st.sidebar.header("⚙️ Configuración de la Estrategia")
-SYMBOL = st.sidebar.text_input("Par a operar (Binance)", value="BTC/USDT:USDT")
+SYMBOL_INPUT = st.sidebar.text_input("Par a operar (Binance)", value="BTC/USDT")
 TIMEFRAME = st.sidebar.selectbox("Temporalidad", ["15m", "4h"], index=0)
 UMBRAL = st.sidebar.slider("Umbral de movimiento (%)", min_value=1.0, max_value=15.0, value=5.0, step=0.5)
 
@@ -63,8 +63,13 @@ tabla_señales = st.empty()
 # =====================================================================
 while True:
     try:
+        # Validar y adaptar la nomenclatura del par para asegurar compatibilidad en CCXT
+        symbol = SYMBOL_INPUT.strip().upper()
+        if "/" in symbol and ":" not in symbol:
+            symbol = f"{symbol}:{symbol.split('/')[1]}"
+
         # 1. Obtener datos del Exchange
-        velas = exchange.fetch_ohlcv(SYMBOL, timeframe=TIMEFRAME, limit=2)
+        velas = exchange.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=2)
         if len(velas) >= 2:
             vela_actual = velas[-1]
             precio_apertura = vela_actual[1]
@@ -72,7 +77,7 @@ while True:
             variacion = ((precio_actual - precio_apertura) / precio_apertura) * 100
             
             # 2. Actualizar las métricas en la web en tiempo real
-            metrica_precio.metric(label=f"Precio Actual ({SYMBOL})", value=f"{precio_actual:.2f} USDT")
+            metrica_precio.metric(label=f"Precio Actual ({symbol})", value=f"{precio_actual:.2f} USDT")
             metrica_variacion.metric(
                 label=f"Variación Vela {TIMEFRAME}", 
                 value=f"{variacion:.2f}%", 
@@ -92,18 +97,18 @@ while True:
                 hora_actual = time.strftime("%Y-%m-%d %H:%M:%S")
                 nueva_señal = {
                     "Hora": hora_actual,
-                    "Par": SYMBOL,
+                    "Par": symbol,
                     "Dirección": direccion,
                     "Precio Entrada": precio_actual,
                     "Variación": f"{variacion:.2f}%"
                 }
                 
-                # Evitar duplicar la misma señal consecutivamente en la misma ejecución corta
+                # Evitar duplicar la misma señal consecutivamente
                 if not st.session_state.historial_señales or st.session_state.historial_señales[0]["Dirección"] != direccion:
-                    st.session_state.historial_señales.insert(0, nueva_señal) # Agregar al inicio
+                    st.session_state.historial_señales.insert(0, nueva_señal)
                     
                     # Enviar Telegram
-                    msg = f"⚠️ ¡SEÑAL DETECTADA!\n\nPar: {SYMBOL}\nDirección: {direccion}\nPrecio: {precio_actual} USDT\nVariación: {variacion:.2f}%"
+                    msg = f"⚠️ ¡SEÑAL DETECTADA!\n\nPar: {symbol}\nDirección: {direccion}\nPrecio: {precio_actual} USDT\nVariación: {variacion:.2f}%"
                     enviar_alerta_telegram(msg)
             
             # 4. Renderizar la tabla de señales en la web
@@ -114,8 +119,9 @@ while True:
                 tabla_señales.info("Aún no se han detectado movimientos que superen el umbral establecido.")
 
     except Exception as e:
-        metrica_estado.metric(label="Estado del Scanner", value="❌ Error de Conexión")
-        print(f"Error en el bucle: {e}")
+        # Muestra el tipo de error en la interfaz para que sepamos la causa exacta si falla
+        metrica_estado.metric(label="Estado del Scanner", value=f"❌ Error: {str(e)[:20]}")
+        print(f"Error detallado en el bucle: {e}")
 
-    # Pausa de 5 segundos antes de refrescar los datos de la web
+    # Pausa de 5 segundos antes de refrescar
     time.sleep(5)
