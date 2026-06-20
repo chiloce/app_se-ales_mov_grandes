@@ -56,31 +56,31 @@ tabla_señales = st.empty()
 ultimas_alertas_enviadas = {}
 
 # =====================================================================
-# BUCLE DE ESCANEO MULTIMONEDA
+# BUCLE DE ESCANEO MULTIMONEDA (OPTIMIZADO)
 # =====================================================================
 while True:
     try:
-        metrica_estado.info("🔄 Escaneando todos los pares de futuros en Binance...")
-        
-        # 1. Traer la información de TODOS los tickers del mercado en un solo paso
+        # 1. Traer la información de todos los tickers
         tickers = exchange.fetch_tickers()
         
-        # 2. Filtrar y analizar par por par
+        # Lista temporal para armar las señales de este ciclo rápidamente
+        nuevas_detecciones = []
+        
+        # 2. Filtrar y analizar rápido
         for symbol, info in tickers.items():
-            # Filtrar solo contratos perpetuos lineales que liquiden en USDT (ej: BTC/USDT:USDT)
+            # Descartar de golpe si no es un contrato perpetuo en USDT
             if not symbol.endswith(':USDT'):
                 continue
                 
-            # Obtener datos de cambio porcentual y volumen
-            variacion = info.get('percentage', 0)  # Variación en las últimas 24h o vela actual según exchange
-            volumen = info.get('quoteVolume', 0)   # Volumen comercializado en USDT
+            variacion = info.get('percentage', 0)
+            volumen = info.get('quoteVolume', 0)
             precio_actual = info.get('last', 0)
             
-            # Filtrar por volumen mínimo configurado para evitar monedas basura
-            if volumen < VOLUMEN_MINIMO:
+            # Descartar si no cumple con el filtro de volumen
+            if volumen < VOLUMEN_MINIMO or precio_actual == 0:
                 continue
 
-            # 3. Evaluar si supera el umbral configurado
+            # 3. Evaluar el umbral (1% o el que configures)
             direccion = None
             if variacion >= UMBRAL:
                 direccion = "🚀 LONG (Subida Fuerte)"
@@ -89,42 +89,39 @@ while True:
 
             if direccion:
                 hora_actual = time.strftime("%H:%M:%S")
-                # Crear clave única combinando el par y la dirección
                 clave_alerta = f"{symbol}_{direccion}"
-                
-                # Evitar mandar alertas repetidas de la misma moneda si ocurrieron hace menos de 15 minutos
                 tiempo_actual = time.time()
+                
+                # Controlar para no repetir la misma alerta en 15 minutos
                 if clave_alerta not in ultimas_alertas_enviadas or (tiempo_actual - ultimas_alertas_enviadas[clave_alerta]) > 900:
+                    ultimas_alertas_enviadas[clave_alerta] = tiempo_actual
                     
-                    nueva_señal = {
+                    registro = {
                         "Hora": hora_actual,
-                        "Par": symbol.split(':')[0], # Limpia el nombre a 'BTC/USDT'
+                        "Par": symbol.split(':')[0],
                         "Dirección": direccion,
                         "Precio": f"{precio_actual}",
                         "Cambio 24h": f"{variacion:.2f}%"
                     }
-                    
-                    # Insertar al inicio de nuestra tabla web
-                    st.session_state.historial_señales.insert(0, nueva_señal)
-                    ultimas_alertas_enviadas[clave_alerta] = tiempo_actual
+                    st.session_state.historial_señales.insert(0, registro)
                     
                     # Despachar mensaje a Telegram
-                    msg = f"⚠️ ¡MOVIMIENTO DETECTADO EN EL MERCADO!\n\nPar: {symbol.split(':')[0]}\nDirección: {direccion}\nPrecio: {precio_actual} USDT\nCambio: {variacion:.2f}%"
+                    msg = f"⚠️ ¡SEÑAL DETECTADA!\n\nPar: {symbol.split(':')[0]}\nDirección: {direccion}\nPrecio: {precio_actual} USDT\nCambio: {variacion:.2f}%"
                     enviar_alerta_telegram(msg)
 
-        # 4. Refrescar tabla en la interfaz web
+        # 4. Renderizar un solo cambio en la interfaz web (Evita congelamientos)
         if st.session_state.historial_señales:
             df = pd.DataFrame(st.session_state.historial_señales)
-            # Limitar la tabla visual a las últimas 50 señales para no saturar el navegador
             tabla_señales.dataframe(df.head(50), use_container_width=True)
         else:
-            tabla_señales.info(f"Escaneando activamente mercados con Vol > {VOLUMEN_MINIMO:,} USDT. Esperando que alguna cripto rompa el {UMBRAL}%...")
+            tabla_señales.info(f"Vigilando mercados activos con Vol > {VOLUMEN_MINIMO:,} USDT. Esperando quiebre del {UMBRAL}%...")
             
-        metrica_estado.success("🟢 Scanner Activo. Vigilando más de 100 criptomonedas simultáneamente...")
+        # Cambiar el mensaje de estado a éxito de forma limpia
+        metrica_estado.success("🟢 Scanner Activo. Vigilando el mercado en tiempo real...")
 
     except Exception as e:
         metrica_estado.error(f"❌ Error de red o API: {str(e)[:50]}")
         print(f"Error detallado: {e}")
 
-    # Pausa de 10 segundos antes de volver a escanear todo el mercado
+    # Pausa de 10 segundos antes de la siguiente vuelta
     time.sleep(10)
