@@ -92,9 +92,9 @@ while True:
             )
             metrica_estado.metric(label="Estado del Scanner", value="🟢 Buscando señal...")
 
-            # 3. Lógica de detección de señales
+            # 3. Lógica de detección de señales (CORREGIDA CON 'UMBRAL')
             direccion = None
-            if variacion >= UBRAL:
+            if variacion >= UMBRAL:
                 direccion = "🚀 LONG (COMPRA AGRESIVA)"
             elif variacion <= -UMBRAL:
                 direccion = "🩸 SHORT (VENTA AGRESIVA)"
@@ -126,7 +126,6 @@ while True:
                 tabla_señales.info("Aún no se han detectado movimientos que superen el umbral establecido.")
 
     except Exception as e:
-        # Muestra el tipo de error en la interfaz para que sepamos la causa exacta si falla
         metrica_estado.metric(label="Estado del Scanner", value=f"❌ Error: {str(e)[:20]}")
         print(f"Error detallado en el bucle: {e}")
 
