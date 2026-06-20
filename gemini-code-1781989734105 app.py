@@ -42,12 +42,19 @@ exchange = ccxt.binance({
     'apiKey': st.secrets["API_KEY_TESTNET"],
     'secret': st.secrets["SECRET_KEY_TESTNET"],
     'enableRateLimit': True,
-    'options': {'defaultType': 'future'}
+    'options': {
+        'defaultType': 'future',
+        'adjustForTimeDifference': True, # CORRECCIÓN 1: Evita errores de sincronización de reloj en la nube
+    }
 })
 
 # Forzar a la app a usar el entorno Testnet en la nube
 exchange.set_sandbox_mode(True)
 
+# CORRECCIÓN 2: Usar los servidores específicos de Testnet para datos públicos
+# Esto evita que los servidores genéricos de Binance bloqueen la IP de Streamlit
+exchange.urls['api']['public'] = 'https://testnet.binancefuture.com/fapi/v1'
+exchange.urls['api']['private'] = 'https://testnet.binancefuture.com/fapi/v1'
 # Métricas principales en pantalla
 col1, col2, col3 = st.columns(3)
 metrica_precio = col1.empty()
